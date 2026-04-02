@@ -2,6 +2,7 @@
 
 Un sistema completo de monitoreo de temperatura y humedad en tiempo real, construido con un sensor físico conectado a un Arduino y una interfaz web que muestra los datos en vivo, predice tendencias y detecta anomalías usando inteligencia artificial.
 
+[![Demo del proyecto](https://i9.ytimg.com/vi/uRBfHxHXQX0/mqdefault.jpg?sqp=CLjSu84G&rs=AOn4CLCvS_oEPV8HcC9TFej6Hc9BOzrDmg)](https://youtu.be/uRBfHxHXQX0)
 ---
 
 ## ¿Cómo funciona?
