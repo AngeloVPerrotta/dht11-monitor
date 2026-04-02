@@ -1,249 +1,77 @@
-# DHT11 Environmental Monitor
+# Monitor Ambiental DHT11
 
-A full-stack IoT project that reads temperature and humidity data from a DHT11 sensor connected to an Arduino, stores it in a local SQLite database, and exposes it through two REST APIs and a real-time web dashboard with machine learning features.
-
----
-
-## Circuit
-
-![Circuit placeholder](https://placehold.co/800x400?text=Arduino+%2B+DHT11+Circuit)
-
-> **Wiring:** DHT11 DATA → Arduino digital pin 2 · VCC → 5V · GND → GND  
-> Serial output format over USB: `temperature;humidity` at 9600 baud.
+Un sistema completo de monitoreo de temperatura y humedad en tiempo real, construido con un sensor físico conectado a un Arduino y una interfaz web que muestra los datos en vivo, predice tendencias y detecta anomalías usando inteligencia artificial.
 
 ---
 
-## Features
+## ¿Cómo funciona?
 
-- **Real-time monitoring** — temperature and humidity updated every 5 seconds in the browser
-- **ML prediction** — linear regression (scikit-learn) over the last 100 readings to forecast the next 10 data points
-- **Anomaly detection** — flags readings more than 2 standard deviations from the historical mean
-- **REST API** — two independent servers (Flask + FastAPI) exposing structured JSON endpoints
-- **Interactive dashboard** — glassmorphism UI with Chart.js charts, sticky metrics, alerts table, and system status panel
+El sistema arranca desde el mundo físico: un sensor DHT11 mide continuamente la temperatura y la humedad del ambiente. Ese sensor está conectado a una placa Arduino, que lee los valores cada dos segundos y los envía por cable USB a la computadora, como si estuviera "hablando" a través del puerto serial.
 
----
+En la computadora hay un script de Python escuchando ese cable. Cada vez que llegan nuevos datos, los valida, los guarda en una base de datos local y también los registra en un archivo de respaldo en formato CSV. Al mismo tiempo, compara los valores contra umbrales configurables: si la temperatura supera los 35 °C o la humedad cae por debajo del 30%, genera una alerta y la guarda también en la base de datos.
 
-## Tech Stack
+Una vez que los datos están guardados, dos servidores web los ponen a disposición a través de una API REST. El primero es un servidor ligero en Flask que alimenta al dashboard con el historial de las últimas 24 horas. El segundo es un servidor más completo en FastAPI que ofrece endpoints adicionales, incluyendo predicción de temperatura con machine learning y detección de anomalías estadísticas.
 
-| Layer | Technology |
-|---|---|
-| Sensor | Arduino Uno + DHT11 |
-| Data ingestion | Python `pyserial` |
-| Storage | SQLite |
-| Data export | CSV |
-| API (lightweight) | Flask 3 |
-| API (full-featured) | FastAPI + Uvicorn |
-| ML | scikit-learn, NumPy |
-| Frontend | HTML/CSS/JS, Chart.js 4 |
+Finalmente, el dashboard, que es una página web que se abre directo en el navegador, consulta esos servidores cada pocos segundos y actualiza los gráficos, las métricas y los indicadores en tiempo real, sin necesidad de recargar la página.
 
 ---
 
-## Project Structure
+## ¿Qué muestra el dashboard?
 
-```
-proyecto sensor/
-├── sensor.py          # Reads serial data from Arduino → DB + CSV
-├── server.py          # Flask API  (port 5000)
-├── api.py             # FastAPI    (port 8000)
-├── dashboard.html     # Frontend dashboard
-├── consultar_db.py    # CLI utility to inspect the database
-├── sensor.db          # SQLite database (git-ignored)
-└── datos_sensor.csv   # CSV backup (git-ignored)
-```
+**Métricas superiores fijas:** Cuatro tarjetas que siempre están visibles aunque hagas scroll. Muestran la temperatura actual, la humedad actual, el promedio histórico de temperatura y el total de lecturas acumuladas en la base de datos. Se actualizan cada cinco segundos.
 
----
+**Gráfico de temperatura (últimas 24 horas):** Una línea naranja que traza cómo fue variando la temperatura a lo largo del día. El eje vertical siempre va de 0 a 50 °C para que sea fácil comparar lecturas entre distintos momentos.
 
-## Installation
+**Gráfico de humedad (últimas 24 horas):** Lo mismo pero para la humedad, con el eje vertical fijo entre 0 y 100%.
 
-### Prerequisites
+**Gráfico de predicción:** Muestra dos líneas sobre el mismo eje. La naranja sólida representa los últimos 20 valores reales medidos por el sensor. La línea blanca punteada proyecta cómo seguiría la temperatura en los próximos 10 puntos según el modelo de inteligencia artificial. Se actualiza cada 30 segundos.
 
-- Python 3.10+
-- Arduino IDE (to flash the sensor sketch)
-- A DHT11 sensor wired to the Arduino
+**Gráfico de anomalías:** Muestra la curva de temperatura con los puntos normales en naranja. Los puntos que el sistema considera anómalos aparecen marcados con un círculo rojo más grande. Debajo del título se lee en texto el promedio, el desvío estándar y el rango dentro del cual un valor se considera normal.
 
-### 1 — Clone the repository
+**Tabla de alertas:** Lista las últimas alertas registradas con hora, tipo, valor medido y umbral superado. Las alertas de temperatura tienen fondo rojo suave y las de humedad fondo amarillo suave. Si no hay alertas, muestra un mensaje indicándolo.
 
-```bash
-git clone <your-repo-url>
-cd "proyecto sensor"
-```
-
-### 2 — Install Python dependencies
-
-```bash
-pip install flask flask-cors fastapi uvicorn pyserial numpy scikit-learn
-```
-
-### 3 — Flash the Arduino
-
-Upload the following sketch to your Arduino board. It reads the DHT11 and sends data over Serial in `temp;hum` format every 2 seconds:
-
-```cpp
-#include <DHT.h>
-#define DHTPIN 2
-#define DHTTYPE DHT11
-DHT dht(DHTPIN, DHTTYPE);
-
-void setup() {
-  Serial.begin(9600);
-  dht.begin();
-}
-
-void loop() {
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
-  if (!isnan(h) && !isnan(t)) {
-    Serial.print(t);
-    Serial.print(";");
-    Serial.println(h);
-  } else {
-    Serial.println("ERROR");
-  }
-  delay(2000);
-}
-```
-
-### 4 — Configure the serial port
-
-Open `sensor.py` and set the correct COM port:
-
-```python
-PUERTO = "COM3"   # Windows: COM3, COM4, etc.
-                  # Linux/Mac: /dev/ttyUSB0 or /dev/tty.usbmodem*
-```
+**Panel de estado del sistema:** Cinco tarjetas resumen al pie del dashboard. Indican si el sensor está conectado o sin señal (basándose en cuándo fue la última lectura), la temperatura más alta del día, la humedad más alta del día, cuántas lecturas se tomaron en las últimas 24 horas y cuántas alertas hay registradas en total.
 
 ---
 
-## Running the Project
+## Inteligencia artificial
 
-All four components can run simultaneously in separate terminals.
+**Predicción de temperatura:** El sistema toma los últimos 100 registros de temperatura y aplica una regresión lineal, que es una técnica que busca la tendencia general de los datos trazando la línea recta que mejor los representa. Con esa línea, extrapola los próximos 10 puntos futuros. No predice el futuro con certeza absoluta, pero sí da una idea muy útil de hacia dónde va la temperatura si las condiciones se mantienen similares.
 
-### Terminal 1 — Data ingestion (sensor → DB)
-
-```bash
-python sensor.py
-```
-
-Connects to the Arduino over serial, reads `temp;hum` lines, writes each reading to `lecturas` in `sensor.db`, saves a CSV backup, and triggers alert checks.
-
-### Terminal 2 — Flask API (port 5000)
-
-```bash
-python server.py
-```
-
-Lightweight server that feeds the dashboard with historical and real-time data.
-
-### Terminal 3 — FastAPI (port 8000)
-
-```bash
-uvicorn api:app --reload --port 8000
-```
-
-Full-featured API with ML endpoints. Interactive docs available at `http://localhost:8000/docs`.
-
-### Terminal 4 — Dashboard
-
-Open `dashboard.html` directly in a browser (no build step required):
-
-```
-file:///path/to/proyecto sensor/dashboard.html
-```
-
-Or serve it with any static server:
-
-```bash
-python -m http.server 3000
-# then open http://localhost:3000/dashboard.html
-```
-
-### Inspect the database (optional)
-
-```bash
-python consultar_db.py
-```
-
-Prints the last 10 sensor readings, global statistics, the last 10 alerts, and an alert summary to the terminal.
+**Detección de anomalías:** El sistema calcula el promedio y el desvío estándar de los últimos 200 registros. El desvío estándar mide qué tan dispersos están los valores respecto al promedio. Si un valor está a más del doble de ese desvío por encima o por debajo del promedio, se considera anómalo. Por ejemplo, si el promedio es 27 °C y el desvío es 1 °C, cualquier lectura menor a 25 °C o mayor a 29 °C queda marcada como anomalía. Esto permite detectar automáticamente picos o caídas inusuales sin configurar umbrales manuales.
 
 ---
 
-## API Reference
+## Tecnologías utilizadas
 
-### Flask — `http://localhost:5000`
+**Arduino:** La placa microcontroladora que lee el sensor físico DHT11 y envía los datos en crudo a la computadora por USB.
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/datos` | Last 50 readings ordered oldest → newest |
-| GET | `/api/datos/hoy` | All readings from the last 24 hours |
-| GET | `/api/stats` | Current temp/humidity + aggregated statistics |
+**Python:** El lenguaje central del proyecto. Se usa para recibir los datos del Arduino, procesarlos, guardarlos y correr los dos servidores de la API.
 
-#### Example — `/api/stats`
+**SQLite:** La base de datos embebida donde se almacenan todas las lecturas y alertas. No requiere instalación separada ni servidor de base de datos.
 
-```json
-{
-  "temp_actual": 26.5,
-  "hum_actual": 58.0,
-  "temp_promedio": 25.8,
-  "temp_max": 31.2,
-  "temp_min": 22.1,
-  "total_lecturas": 4320
-}
-```
+**Flask:** El servidor web ligero que expone los datos históricos al dashboard. Maneja las rutas de datos del día y las estadísticas generales.
+
+**FastAPI:** El servidor web más completo que ofrece todos los endpoints avanzados, incluyendo historial paginado, predicción con machine learning y detección de anomalías. Genera documentación interactiva de la API de forma automática.
+
+**scikit-learn y NumPy:** Las librerías de Python usadas para el machine learning. NumPy maneja los arrays numéricos y scikit-learn ejecuta el modelo de regresión lineal para las predicciones.
+
+**Chart.js:** La librería de JavaScript que dibuja todos los gráficos del dashboard directamente en el navegador, sin necesidad de imágenes ni software externo.
+
+**HTML, CSS y JavaScript:** El frontend completo del dashboard. Todo en un único archivo, sin frameworks ni herramientas de compilación.
 
 ---
 
-### FastAPI — `http://localhost:8000`
+## Requisitos para correrlo
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/data` | Single most recent reading |
-| GET | `/history` | Paginated history — params: `limit` (1–500), `desde` (timestamp) |
-| GET | `/stats` | Aggregated stats with min/max/avg for temp and humidity |
-| GET | `/alerts` | Last 20 alerts, newest first |
-| GET | `/alerts/stats` | Alert counts by type and timestamp of last alert |
-| GET | `/predict` | Linear regression prediction for next 10 readings |
-| GET | `/anomalias` | Readings more than 2σ from the historical mean |
+Necesitás tener instalado Python en tu computadora. Las librerías necesarias son Flask, FastAPI, Uvicorn, pyserial, NumPy y scikit-learn, todas instalables desde la terminal con el gestor de paquetes de Python.
 
-#### Example — `/predict`
+Para la parte del hardware necesitás una placa Arduino (Uno o compatible), un sensor DHT11 y un cable USB para conectar el Arduino a la computadora. El Arduino tiene que tener cargado el sketch correspondiente que lee el sensor y envía los datos por serial, y hay que asegurarse de que el número de puerto COM configurado en el script de Python coincide con el que usa el Arduino en tu sistema.
 
-```json
-{
-  "historico": [
-    { "timestamp": "2024-01-15 14:30:00", "temp": 25.3 }
-  ],
-  "prediccion": [
-    { "timestamp": "2024-01-15 14:30:02", "temp": 25.4 }
-  ]
-}
-```
-
-#### Example — `/anomalias`
-
-```json
-{
-  "anomalias": [
-    { "id": 312, "timestamp": "2024-01-15 13:02:44", "temp": 31.8, "desviacion": 2.34 }
-  ],
-  "media": 25.2,
-  "desvio": 2.8
-}
-```
+El dashboard no requiere instalación de ningún servidor web: se abre directamente en cualquier navegador moderno como archivo local, siempre que los dos servidores de Python estén corriendo.
 
 ---
 
-## Alert Thresholds
+## Autor
 
-Configured in `sensor.py`. Defaults:
-
-| Condition | Threshold |
-|---|---|
-| High temperature | > 35 °C |
-| Low humidity | < 30 % |
-
-Change `TEMP_MAX` and `HUM_MIN` at the top of `sensor.py` to adjust.
-
----
-
-## License
-
-MIT
+**Angelo Perrotta** — [github.com/AngeloVPerrotta](https://github.com/AngeloVPerrotta)
