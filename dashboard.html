@@ -1,0 +1,1052 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DHT11 Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --glass:        rgba(255, 255, 255, 0.055);
+      --glass-hover:  rgba(255, 255, 255, 0.09);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --text:         #f1f5f9;
+      --muted:        rgba(148, 163, 184, 0.75);
+      --temp:         #fb923c;
+      --hum:          #38bdf8;
+      --green:        #4ade80;
+      --red:          #f87171;
+    }
+
+    @keyframes gradientShift {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    @keyframes dotPulse {
+      0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+      70%  { box-shadow: 0 0 0 7px rgba(74, 222, 128, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+    }
+    @keyframes valueIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeSlideIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+      overflow-y: auto;
+      background: linear-gradient(-45deg, #080c18, #0d1b2a, #0f172a, #0a0c1a, #160a28, #0d1b2a);
+      background-size: 400% 400%;
+      animation: gradientShift 18s ease infinite;
+      color: var(--text);
+      padding: 1.25rem 1.5rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .header-left h1 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.035em;
+      line-height: 1.1;
+    }
+    .header-left h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, #fb923c, #f43f5e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .header-left p {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-top: 0.2rem;
+      font-weight: 400;
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-radius: 100px;
+      padding: 0.45rem 1rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background 0.4s;
+    }
+    .status-dot.ok  { background: var(--green); animation: dotPulse 2s infinite; }
+    .status-dot.err { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+    /* ── Metrics — sticky so they stay visible on scroll ───────────────── */
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.9rem;
+      flex-shrink: 0;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      margin: 0 -1.5rem;
+      padding: 0.6rem 1.5rem;
+      background: rgba(8, 12, 24, 0.72);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .metric {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-radius: 16px;
+      padding: 1.1rem 1.35rem 1rem;
+      transition: transform 0.22s ease, background 0.22s ease;
+      cursor: default;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+    }
+    .metric:hover { transform: scale(1.03); background: var(--glass-hover); }
+    .metric-top {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 0.6rem;
+    }
+    .metric-value {
+      display: flex;
+      align-items: baseline;
+      gap: 0.25rem;
+      margin-bottom: 0.35rem;
+    }
+    .metric-number {
+      font-size: 2.25rem;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.045em;
+    }
+    .metric-number.temp    { color: var(--temp); }
+    .metric-number.hum     { color: var(--hum); }
+    .metric-number.neutral { color: var(--text); }
+    .metric-unit {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--muted);
+      padding-bottom: 0.15rem;
+    }
+    .metric-desc {
+      font-size: 0.7rem;
+      color: var(--muted);
+      line-height: 1.4;
+      font-weight: 400;
+    }
+    .value-animate {
+      animation: valueIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+
+    /* ── Chart cards ────────────────────────────────────────────────────── */
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.9rem;
+      flex-shrink: 0;
+    }
+    .chart-card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-radius: 16px;
+      padding: 1.1rem 1.35rem;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .chart-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    }
+    .chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.9rem;
+      flex-shrink: 0;
+    }
+    .chart-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--muted);
+    }
+    .chart-title strong { color: var(--text); }
+    .chart-pill {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.18rem 0.6rem;
+      border-radius: 100px;
+    }
+    .chart-pill.temp {
+      background: rgba(251, 146, 60, 0.12);
+      color: var(--temp);
+      border: 1px solid rgba(251, 146, 60, 0.22);
+    }
+    .chart-pill.hum {
+      background: rgba(56, 189, 248, 0.12);
+      color: var(--hum);
+      border: 1px solid rgba(56, 189, 248, 0.22);
+    }
+    .chart-pill.ml {
+      background: rgba(167, 139, 250, 0.12);
+      color: #c4b5fd;
+      border: 1px solid rgba(167, 139, 250, 0.22);
+    }
+    .chart-pill.danger {
+      background: rgba(239, 68, 68, 0.12);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.22);
+    }
+    /* CRITICAL: fixed height prevents Chart.js infinite growth bug */
+    .chart-wrap      { height: 280px; position: relative; flex-shrink: 0; }
+    .chart-wrap-sm   { height: 220px; position: relative; flex-shrink: 0; }
+
+    /* Chart legend override */
+    .chart-legend {
+      display: flex;
+      gap: 1rem;
+      margin-top: 0.6rem;
+      flex-shrink: 0;
+    }
+    .chart-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.65rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .legend-line {
+      width: 18px;
+      height: 2px;
+      border-radius: 2px;
+    }
+    .legend-line.dashed {
+      background: repeating-linear-gradient(90deg, #f1f5f9 0, #f1f5f9 4px, transparent 4px, transparent 8px);
+    }
+
+    /* ── Section cards (alerts, estado) ─────────────────────────────────── */
+    .section-card {
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-radius: 16px;
+      padding: 1.1rem 1.35rem;
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .section-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.12), transparent);
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.9rem;
+    }
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--muted);
+    }
+    .section-title strong { color: var(--text); }
+
+    /* ── Alerts table ───────────────────────────────────────────────────── */
+    .alerts-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    .alerts-table thead th {
+      text-align: left;
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      padding: 0 0.75rem 0.6rem;
+      border-bottom: 1px solid var(--glass-border);
+    }
+    .alerts-table tbody tr {
+      transition: background 0.18s ease;
+      animation: fadeSlideIn 0.3s ease both;
+    }
+    .alerts-table tbody tr:hover       { background: rgba(255, 255, 255, 0.04); }
+    .alerts-table tbody tr.row-temp    { background: rgba(248, 113, 113, 0.07); }
+    .alerts-table tbody tr.row-temp:hover { background: rgba(248, 113, 113, 0.12); }
+    .alerts-table tbody tr.row-hum     { background: rgba(250, 204, 21, 0.07); }
+    .alerts-table tbody tr.row-hum:hover  { background: rgba(250, 204, 21, 0.12); }
+    .alerts-table tbody td {
+      padding: 0.52rem 0.75rem;
+      color: var(--text);
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      vertical-align: middle;
+    }
+    .alerts-table tbody td:first-child {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 0.72rem;
+    }
+    .badge-tipo {
+      display: inline-block;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.15rem 0.55rem;
+      border-radius: 100px;
+    }
+    .badge-tipo.temp {
+      background: rgba(251, 146, 60, 0.15);
+      color: var(--temp);
+      border: 1px solid rgba(251, 146, 60, 0.25);
+    }
+    .badge-tipo.hum {
+      background: rgba(250, 204, 21, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(250, 204, 21, 0.25);
+    }
+    .empty-state {
+      text-align: center;
+      padding: 1.5rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    /* ── Estado del sistema ─────────────────────────────────────────────── */
+    .estado-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.75rem;
+    }
+    .estado-card {
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid var(--glass-border);
+      border-radius: 14px;
+      padding: 1rem 1.1rem 0.9rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      transition: transform 0.22s ease, background 0.22s ease;
+      cursor: default;
+    }
+    .estado-card:hover { transform: scale(1.03); background: var(--glass-hover); }
+    .estado-icon { font-size: 1.4rem; line-height: 1; }
+    .estado-label {
+      font-size: 0.62rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+    .estado-value {
+      font-size: 1.25rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .estado-value.ok  { color: var(--green); }
+    .estado-value.err { color: var(--red); }
+    .estado-value.temp-col { color: var(--temp); }
+    .estado-value.hum-col  { color: var(--hum); }
+    .estado-value.warn     { color: #fbbf24; }
+    .estado-sub {
+      font-size: 0.65rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    /* ── Chart sub-text & overlay ───────────────────────────────────────── */
+    .chart-sub {
+      font-size: 0.68rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 0.7rem;
+      padding: 0.45rem 0.75rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+
+    .chart-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(8, 12, 24, 0.65);
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      border-radius: 8px;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 2;
+    }
+
+    /* ── Footer ─────────────────────────────────────────────────────────── */
+    .footer-bar {
+      font-size: 0.68rem;
+      color: var(--muted);
+      opacity: 0.5;
+      text-align: right;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="header-left">
+    <h1>DHT11 <em>Monitor</em></h1>
+    <p>Monitoreo ambiental en tiempo real</p>
+  </div>
+  <div class="status-badge">
+    <div class="status-dot" id="dot"></div>
+    <span id="status-text">Conectando&hellip;</span>
+  </div>
+</header>
+
+<!-- Metrics -->
+<div class="metrics">
+  <div class="metric">
+    <div class="metric-top">Temperatura</div>
+    <div class="metric-value">
+      <span class="metric-number temp" id="val-temp">&mdash;</span>
+      <span class="metric-unit">&deg;C</span>
+    </div>
+    <div class="metric-desc">Temperatura en este momento</div>
+  </div>
+  <div class="metric">
+    <div class="metric-top">Humedad</div>
+    <div class="metric-value">
+      <span class="metric-number hum" id="val-hum">&mdash;</span>
+      <span class="metric-unit">%</span>
+    </div>
+    <div class="metric-desc">Humedad en este momento</div>
+  </div>
+  <div class="metric">
+    <div class="metric-top">Promedio</div>
+    <div class="metric-value">
+      <span class="metric-number temp" id="avg-temp">&mdash;</span>
+      <span class="metric-unit">&deg;C</span>
+    </div>
+    <div class="metric-desc">Temperatura promedio histórica</div>
+  </div>
+  <div class="metric">
+    <div class="metric-top">Lecturas</div>
+    <div class="metric-value">
+      <span class="metric-number neutral" id="total-lecturas">&mdash;</span>
+    </div>
+    <div class="metric-desc">Total de registros en la base de datos</div>
+  </div>
+</div>
+
+<!-- Main charts: last 24 h -->
+<div class="charts">
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="chart-title"><strong>Temperatura</strong> — últimas 24 h</div>
+      <div class="chart-pill temp">&deg;C</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartTemp"></canvas>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="chart-title"><strong>Humedad</strong> — últimas 24 h</div>
+      <div class="chart-pill hum">%</div>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="chartHum"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ML charts -->
+<div class="charts">
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="chart-title"><strong>Predicción</strong> de temperatura</div>
+      <div class="chart-pill ml">ML</div>
+    </div>
+    <div class="chart-wrap-sm">
+      <canvas id="chartPredict"></canvas>
+      <div class="chart-overlay" id="predict-overlay">Esperando datos suficientes&hellip;</div>
+    </div>
+    <div class="chart-legend">
+      <div class="chart-legend-item">
+        <div class="legend-line" style="background:#fb923c"></div>
+        Histórico real
+      </div>
+      <div class="chart-legend-item">
+        <div class="legend-line dashed"></div>
+        Predicción
+      </div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-header">
+      <div class="chart-title"><strong>Anomalías</strong> detectadas</div>
+      <div class="chart-pill danger">&#9888;</div>
+    </div>
+    <div class="chart-sub" id="anomaly-sub">Cargando estadísticas&hellip;</div>
+    <div class="chart-wrap-sm">
+      <canvas id="chartAnomaly"></canvas>
+    </div>
+    <div class="chart-legend">
+      <div class="chart-legend-item">
+        <div class="legend-line" style="background:#fb923c"></div>
+        Temperatura normal
+      </div>
+      <div class="chart-legend-item">
+        <svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="5" fill="#ef4444"/></svg>
+        Anomalía (&gt;2&sigma;)
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Alerts -->
+<div class="section-card">
+  <div class="section-header">
+    <div class="section-title"><strong>Alertas</strong> recientes</div>
+    <div class="chart-pill temp" id="alerts-count" style="display:none"></div>
+  </div>
+  <div id="alerts-container">
+    <div class="empty-state">Cargando alertas&hellip;</div>
+  </div>
+</div>
+
+<!-- Estado del sistema -->
+<div class="section-card">
+  <div class="section-header">
+    <div class="section-title"><strong>Estado</strong> del sistema</div>
+  </div>
+  <div class="estado-grid">
+    <div class="estado-card" id="card-sensor">
+      <div class="estado-icon" id="estado-sensor-icon">⏳</div>
+      <div class="estado-label">Sensor</div>
+      <div class="estado-value" id="estado-sensor-text">&mdash;</div>
+      <div class="estado-sub" id="estado-sensor-sub">&nbsp;</div>
+    </div>
+    <div class="estado-card">
+      <div class="estado-icon">🌡️</div>
+      <div class="estado-label">Temp. máxima hoy</div>
+      <div class="estado-value temp-col" id="estado-temp-max">&mdash;</div>
+      <div class="estado-sub">últimas 24 h</div>
+    </div>
+    <div class="estado-card">
+      <div class="estado-icon">💧</div>
+      <div class="estado-label">Humedad máxima hoy</div>
+      <div class="estado-value hum-col" id="estado-hum-max">&mdash;</div>
+      <div class="estado-sub">últimas 24 h</div>
+    </div>
+    <div class="estado-card">
+      <div class="estado-icon">📊</div>
+      <div class="estado-label">Lecturas hoy</div>
+      <div class="estado-value" id="estado-lecturas">&mdash;</div>
+      <div class="estado-sub">últimas 24 h</div>
+    </div>
+    <div class="estado-card">
+      <div class="estado-icon">⚠️</div>
+      <div class="estado-label">Alertas totales</div>
+      <div class="estado-value warn" id="estado-alertas">&mdash;</div>
+      <div class="estado-sub" id="estado-alertas-sub">&nbsp;</div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer -->
+<div class="footer-bar" id="last-update">Actualizando cada 5 segundos&hellip;</div>
+
+<script>
+  const BASE_FLASK = "http://localhost:5000";
+  const BASE_FAST  = "http://localhost:8000";
+
+  const dot        = document.getElementById("dot");
+  const statusText = document.getElementById("status-text");
+  const lastUpdate = document.getElementById("last-update");
+
+  // Cache shared between cycles
+  let cachedData = [];
+
+  // ── Shared chart config helpers ─────────────────────────────────────────
+  function makeGradient(ctx, colorTop, colorBottom, height) {
+    const g = ctx.createLinearGradient(0, 0, 0, height);
+    g.addColorStop(0, colorTop);
+    g.addColorStop(1, colorBottom);
+    return g;
+  }
+
+  const sharedScales = (unit, yMin, yMax) => ({
+    x: {
+      ticks: {
+        color: "rgba(148, 163, 184, 0.45)",
+        maxTicksLimit: 8,
+        maxRotation: 0,
+        font: { size: 10, family: "'Inter', sans-serif" },
+      },
+      grid:   { color: "rgba(255, 255, 255, 0.035)" },
+      border: { display: false },
+    },
+    y: {
+      min: yMin,
+      max: yMax,
+      ticks: {
+        color: "rgba(148, 163, 184, 0.45)",
+        font: { size: 10, family: "'Inter', sans-serif" },
+        callback: v => v + unit,
+      },
+      grid:   { color: "rgba(255, 255, 255, 0.035)" },
+      border: { display: false },
+    },
+  });
+
+  const sharedTooltip = (unit) => ({
+    backgroundColor: "rgba(8, 12, 24, 0.94)",
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    borderWidth: 1,
+    titleColor: "#f1f5f9",
+    bodyColor: "#94a3b8",
+    padding: 12,
+    cornerRadius: 10,
+    titleFont: { family: "'Inter', sans-serif", weight: "600", size: 12 },
+    bodyFont:  { family: "'Inter', sans-serif", size: 12 },
+    callbacks: { label: ctx => `  ${ctx.parsed.y != null ? ctx.parsed.y.toFixed(1) : "—"}${unit}` },
+  });
+
+  // ── Main chart factory (fixed Y axis) ───────────────────────────────────
+  function makeChart(id, borderColor, gradTop, gradBottom, unit, yMin, yMax) {
+    const canvas = document.getElementById(id);
+    const ctx    = canvas.getContext("2d");
+    return new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          data: [],
+          borderColor,
+          backgroundColor: makeGradient(ctx, gradTop, gradBottom, 280),
+          borderWidth: 2,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          pointBackgroundColor: borderColor,
+          pointBorderWidth: 0,
+          fill: true,
+          tension: 0.4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 0 },
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false }, tooltip: sharedTooltip(unit) },
+        scales: sharedScales(unit, yMin, yMax),
+      },
+    });
+  }
+
+  // Main charts with fixed Y ranges
+  const chartTemp = makeChart("chartTemp", "#fb923c",
+    "rgba(251,146,60,0.28)", "rgba(251,146,60,0)", "°C", 0, 50);
+  const chartHum  = makeChart("chartHum",  "#38bdf8",
+    "rgba(56,189,248,0.28)", "rgba(56,189,248,0)", "%", 0, 100);
+
+  // ── Prediction chart ────────────────────────────────────────────────────
+  function makePredictChart() {
+    const ctx = document.getElementById("chartPredict").getContext("2d");
+    return new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Histórico",
+            data: [],
+            borderColor: "#fb923c",
+            backgroundColor: makeGradient(ctx, "rgba(251,146,60,0.18)", "rgba(251,146,60,0)", 220),
+            borderWidth: 2,
+            pointRadius: 2,
+            pointHoverRadius: 4,
+            pointBackgroundColor: "#fb923c",
+            pointBorderWidth: 0,
+            fill: true,
+            tension: 0.4,
+            spanGaps: false,
+          },
+          {
+            label: "Predicción",
+            data: [],
+            borderColor: "#f1f5f9",
+            backgroundColor: "rgba(241,245,249,0.04)",
+            borderWidth: 2,
+            borderDash: [6, 4],
+            pointRadius: 3,
+            pointHoverRadius: 5,
+            pointBackgroundColor: "#f1f5f9",
+            pointBorderWidth: 0,
+            fill: false,
+            tension: 0.4,
+            spanGaps: false,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 0 },
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false }, tooltip: sharedTooltip("°C") },
+        scales: {
+          x: {
+            ticks: {
+              color: "rgba(148,163,184,0.45)",
+              maxTicksLimit: 8,
+              maxRotation: 0,
+              font: { size: 10, family: "'Inter', sans-serif" },
+            },
+            grid:   { color: "rgba(255,255,255,0.035)" },
+            border: { display: false },
+          },
+          y: {
+            min: 15,
+            max: 45,
+            ticks: {
+              color: "rgba(148,163,184,0.45)",
+              font: { size: 10, family: "'Inter', sans-serif" },
+              callback: v => v + "°C",
+            },
+            grid:   { color: "rgba(255,255,255,0.035)" },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  // ── Anomalies chart ─────────────────────────────────────────────────────
+  function makeAnomalyChart() {
+    const ctx = document.getElementById("chartAnomaly").getContext("2d");
+    return new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{
+          data: [],
+          borderColor: "#fb923c",
+          backgroundColor: makeGradient(ctx, "rgba(251,146,60,0.18)", "rgba(251,146,60,0)", 220),
+          borderWidth: 2,
+          pointRadius: [],
+          pointHoverRadius: [],
+          pointBackgroundColor: [],
+          pointBorderWidth: 0,
+          fill: true,
+          tension: 0.4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 0 },
+        interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false }, tooltip: sharedTooltip("°C") },
+        scales: {
+          x: {
+            ticks: {
+              color: "rgba(148,163,184,0.45)",
+              maxTicksLimit: 8,
+              maxRotation: 0,
+              font: { size: 10, family: "'Inter', sans-serif" },
+            },
+            grid:   { color: "rgba(255,255,255,0.035)" },
+            border: { display: false },
+          },
+          y: {
+            beginAtZero: false,
+            grace: "5%",
+            ticks: {
+              color: "rgba(148,163,184,0.45)",
+              font: { size: 10, family: "'Inter', sans-serif" },
+              callback: v => v + "°C",
+            },
+            grid:   { color: "rgba(255,255,255,0.035)" },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  const chartPredict = makePredictChart();
+  const chartAnomaly = makeAnomalyChart();
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
+  function animateValue(el, newVal) {
+    if (el.textContent === newVal) return;
+    el.classList.remove("value-animate");
+    void el.offsetWidth;
+    el.textContent = newVal;
+    el.classList.add("value-animate");
+  }
+
+  // Returns HH:MM from any "YYYY-MM-DD HH:MM:SS" or "HH:MM:SS" string
+  function fmt(ts) {
+    const m = String(ts).match(/(\d{2}:\d{2}):\d{2}/);
+    return m ? m[1] : String(ts).slice(-5);
+  }
+
+  // ── Alerts render ───────────────────────────────────────────────────────
+  function renderAlerts(alerts) {
+    const container  = document.getElementById("alerts-container");
+    const countBadge = document.getElementById("alerts-count");
+    if (!alerts || alerts.length === 0) {
+      container.innerHTML = '<div class="empty-state">Sin alertas registradas</div>';
+      countBadge.style.display = "none";
+      return;
+    }
+    countBadge.style.display = "";
+    countBadge.textContent   = alerts.length + " alertas";
+    const rows = alerts.map((a, i) => {
+      const isTemp   = a.tipo === "temperatura";
+      const rowCls   = isTemp ? "row-temp" : "row-hum";
+      const badgeCls = isTemp ? "temp" : "hum";
+      return `
+        <tr class="${rowCls}" style="animation-delay:${(i * 0.04).toFixed(2)}s">
+          <td>${fmt(a.timestamp)}</td>
+          <td><span class="badge-tipo ${badgeCls}">${a.tipo}</span></td>
+          <td>${a.valor}</td>
+          <td>${a.umbral}</td>
+        </tr>`;
+    }).join("");
+    container.innerHTML = `
+      <table class="alerts-table">
+        <thead><tr><th>Hora</th><th>Tipo</th><th>Valor</th><th>Umbral</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }
+
+  // ── Estado del sistema render ────────────────────────────────────────────
+  function renderEstado(data, alertStats) {
+    const iconEl  = document.getElementById("estado-sensor-icon");
+    const textEl  = document.getElementById("estado-sensor-text");
+    const subEl   = document.getElementById("estado-sensor-sub");
+
+    let sensorOk = false;
+    const lastTs = data.length ? data[data.length - 1].timestamp : null;
+    if (lastTs) {
+      try {
+        const diffSec = (Date.now() - new Date(lastTs.replace(" ", "T")).getTime()) / 1000;
+        sensorOk = diffSec <= 30;
+      } catch (_) {}
+    }
+
+    iconEl.textContent = sensorOk ? "🟢" : "🔴";
+    textEl.className   = "estado-value " + (sensorOk ? "ok" : "err");
+    textEl.textContent = sensorOk ? "Conectado" : "Sin señal";
+    subEl.textContent  = lastTs ? fmt(lastTs) : "—";
+
+    const tempMax = data.length
+      ? Math.max(...data.map(r => parseFloat(r.temp))).toFixed(1) + "°C"
+      : "—";
+    const humMax = data.length
+      ? Math.max(...data.map(r => parseFloat(r.hum))).toFixed(1) + "%"
+      : "—";
+
+    document.getElementById("estado-temp-max").textContent  = tempMax;
+    document.getElementById("estado-hum-max").textContent   = humMax;
+    document.getElementById("estado-lecturas").textContent  = data.length;
+
+    if (alertStats) {
+      document.getElementById("estado-alertas").textContent     = alertStats.total_alertas;
+      document.getElementById("estado-alertas-sub").textContent =
+        `${alertStats.alertas_temp} temp · ${alertStats.alertas_hum} hum`;
+    }
+  }
+
+  // ── Main fetch (every 5 s) ──────────────────────────────────────────────
+  async function fetchData() {
+    try {
+      const [resDatos, resStats, resAlerts, resAlertStats] = await Promise.all([
+        fetch(BASE_FLASK + "/api/datos/hoy"),
+        fetch(BASE_FLASK + "/api/stats"),
+        fetch(BASE_FAST  + "/alerts").catch(() => ({ ok: false })),
+        fetch(BASE_FAST  + "/alerts/stats").catch(() => ({ ok: false })),
+      ]);
+
+      if (!resDatos.ok || !resStats.ok) throw new Error("HTTP error");
+
+      cachedData           = await resDatos.json();
+      const stats          = await resStats.json();
+      const alerts         = resAlerts.ok    ? await resAlerts.json()    : [];
+      const alertStats     = resAlertStats.ok ? await resAlertStats.json() : null;
+
+      if (!cachedData.length) return;
+
+      const labels = cachedData.map(r => fmt(r.timestamp));
+
+      chartTemp.data.labels           = labels;
+      chartTemp.data.datasets[0].data = cachedData.map(r => parseFloat(r.temp));
+      chartTemp.update("none");
+
+      chartHum.data.labels           = labels;
+      chartHum.data.datasets[0].data = cachedData.map(r => parseFloat(r.hum));
+      chartHum.update("none");
+
+      animateValue(document.getElementById("val-temp"),       stats.temp_actual.toFixed(1));
+      animateValue(document.getElementById("val-hum"),        stats.hum_actual.toFixed(1));
+      animateValue(document.getElementById("avg-temp"),       stats.temp_promedio.toFixed(1));
+      animateValue(document.getElementById("total-lecturas"), String(stats.total_lecturas));
+
+      renderAlerts(alerts);
+      renderEstado(cachedData, alertStats);
+
+      dot.className          = "status-dot ok";
+      statusText.textContent = `En vivo · ${cachedData.length} puntos hoy`;
+      lastUpdate.textContent = `Última actualización: ${new Date().toLocaleTimeString("es-AR")}`;
+
+    } catch (e) {
+      dot.className          = "status-dot err";
+      statusText.textContent = "Sin conexión con el servidor";
+      console.error(e);
+    }
+  }
+
+  // ── ML fetch (every 30 s) ───────────────────────────────────────────────
+  async function fetchML() {
+    const predictOverlay = document.getElementById("predict-overlay");
+    const anomalySub     = document.getElementById("anomaly-sub");
+
+    try {
+      const [resPred, resAnom] = await Promise.all([
+        fetch(BASE_FAST + "/predict").catch(() => ({ ok: false })),
+        fetch(BASE_FAST + "/anomalias").catch(() => ({ ok: false })),
+      ]);
+
+      // ── Prediction chart ──────────────────────────────────────────────
+      if (resPred.ok) {
+        const pred = await resPred.json();
+
+        const histTemps = pred.historico.map(p => p.temp);
+        const predTemps = pred.prediccion.map(p => p.temp);
+        const labels    = [
+          ...pred.historico.map(p => fmt(p.timestamp)),
+          ...pred.prediccion.map(p => fmt(p.timestamp)),
+        ];
+        const histData = [...histTemps, ...Array(predTemps.length).fill(null)];
+        const predData = [...Array(histTemps.length).fill(null), ...predTemps];
+
+        chartPredict.data.labels           = labels;
+        chartPredict.data.datasets[0].data = histData;
+        chartPredict.data.datasets[1].data = predData;
+        chartPredict.update("none");
+        predictOverlay.style.display = "none";
+      } else {
+        predictOverlay.style.display = "";
+      }
+
+      // ── Anomalies chart ───────────────────────────────────────────────
+      if (resAnom.ok) {
+        const anom = await resAnom.json();
+
+        // Dynamic explanation text with real values
+        const umbralMin = (anom.media - 2 * anom.desvio).toFixed(1);
+        const umbralMax = (anom.media + 2 * anom.desvio).toFixed(1);
+        anomalySub.textContent =
+          `Promedio histórico: ${anom.media}°C · Desvío: ${anom.desvio}°C · ` +
+          `Umbral: ${umbralMin}°C — ${umbralMax}°C`;
+
+        if (cachedData.length) {
+          const anomalyIds = new Set(anom.anomalias.map(a => a.id));
+          const labels     = cachedData.map(r => fmt(r.timestamp));
+          const temps      = cachedData.map(r => parseFloat(r.temp));
+          const radii      = cachedData.map(r => anomalyIds.has(r.id) ? 8 : 2);
+          const hoverR     = cachedData.map(r => anomalyIds.has(r.id) ? 10 : 5);
+          const colors     = cachedData.map(r => anomalyIds.has(r.id) ? "#ef4444" : "#fb923c");
+
+          chartAnomaly.data.labels                            = labels;
+          chartAnomaly.data.datasets[0].data                 = temps;
+          chartAnomaly.data.datasets[0].pointRadius          = radii;
+          chartAnomaly.data.datasets[0].pointHoverRadius     = hoverR;
+          chartAnomaly.data.datasets[0].pointBackgroundColor = colors;
+          chartAnomaly.update("none");
+        }
+      }
+
+    } catch (e) {
+      console.error("ML fetch error:", e);
+      predictOverlay.style.display = "";
+    }
+  }
+
+  // Boot
+  fetchData();
+  setInterval(fetchData, 5000);
+  fetchML();
+  setInterval(fetchML, 30000);
+</script>
+</body>
+</html>

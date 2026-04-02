@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -m pip install flask flask-cors)",
+      "Bash(python -m pip install fastapi uvicorn)",
+      "Bash(python -m pip show fastapi)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('api.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(python -m pip install scikit-learn numpy)"
+    ]
+  }
+}
